@@ -1,9 +1,11 @@
 {
   "apphosting": {
     "backendId": "chromatic-grid",
-    "rootDir": "./"
+    "rootDir": "./",
+    "alwaysDeployFromSource": true
   },
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "firestore.rules",
+    "database": "(default)"
   }
 }
