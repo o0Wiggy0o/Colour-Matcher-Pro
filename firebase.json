@@ -1,0 +1,9 @@
+{
+  "apphosting": {
+    "backendId": "chromatic-grid",
+    "rootDir": "./"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

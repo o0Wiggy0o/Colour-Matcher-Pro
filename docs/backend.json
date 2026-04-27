@@ -1,0 +1,164 @@
+
+{
+  "entities": {
+    "ColorPalette": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ColorPalette",
+      "type": "object",
+      "description": "Represents a saved color palette, including the base CMYK color and the grid configuration.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the color palette."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N ColorPalette) The ID of the user who created this palette."
+        },
+        "cyan": {
+          "type": "number",
+          "description": "The cyan value of the base CMYK color (0-100).",
+          "format": "integer"
+        },
+        "magenta": {
+          "type": "number",
+          "description": "The magenta value of the base CMYK color (0-100).",
+          "format": "integer"
+        },
+        "yellow": {
+          "type": "number",
+          "description": "The yellow value of the base CMYK color (0-100).",
+          "format": "integer"
+        },
+        "black": {
+          "type": "number",
+          "description": "The black value of the base CMYK color (0-100).",
+          "format": "integer"
+        },
+        "gridSize": {
+          "type": "string",
+          "description": "The size of the grid (e.g., 15x15).",
+          "format": "string"
+        },
+        "variationStep": {
+          "type": "number",
+          "description": "The variation step size (e.g., 5).",
+          "format": "integer"
+        },
+        "dateCreated": {
+          "type": "string",
+          "description": "The date and time when the color palette was created.",
+          "format": "date-time"
+        },
+        "dateModified": {
+          "type": "string",
+          "description": "The date and time when the color palette was last modified.",
+          "format": "date-time"
+        },
+        "paletteName": {
+          "type": "string",
+          "description": "The user-defined name for the color palette."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "cyan",
+        "magenta",
+        "yellow",
+        "black",
+        "gridSize",
+        "variationStep",
+        "dateCreated",
+        "dateModified",
+        "paletteName"
+      ]
+    },
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "username": {
+          "type": "string",
+          "description": "The user's username."
+        },
+        "dateJoined": {
+          "type": "string",
+          "description": "The date and time when the user joined.",
+          "format": "date-time"
+        },
+        "printers": {
+          "type": "array",
+          "description": "A list of printer names defined by the user.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "username",
+        "dateJoined"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profile data. Accessible only by the authenticated user.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/colorPalettes/{colorPaletteId}",
+        "definition": {
+          "entityName": "ColorPalette",
+          "schema": {
+            "$ref": "#/backend/entities/ColorPalette"
+          },
+          "description": "Stores color palettes created by the user. Includes denormalized 'userId' for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            },
+            {
+              "name": "colorPaletteId",
+              "description": "The unique identifier of the color palette."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to ensure secure and scalable data management for the Chromatic Grid application. The primary principle is Authorization Independence, achieved by denormalizing user IDs into the ColorPalette documents. This eliminates the need for `get()` calls in security rules, making them more robust and efficient.  \n\n*   **User Data:** User profiles are stored in `/users/{userId}`. This collection is designed for storing personal user data, accessible only to the authenticated user. \n*   **Color Palettes:** Color palettes are stored within the `/users/{userId}/colorPalettes/{colorPaletteId}` subcollection. This establishes a clear ownership model where each user has control over their color palettes. The `userId` is denormalized into each `colorPalette` document to avoid hierarchical dependencies.\n\nThis design allows for atomic operations (transactions/batches) when creating color palettes, as authorization can be determined solely from the `request.auth.uid` and the data within the color palette document itself. The structure facilitates secure `list` operations, ensuring users can only access their own color palettes. This structure also supports the integrity of ownership, timestamps, and denormalized data, making the application more secure, scalable, and maintainable."
+  }
+}

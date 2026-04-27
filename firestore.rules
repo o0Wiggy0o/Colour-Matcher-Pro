@@ -1,0 +1,92 @@
+
+/**
+ * @fileoverview Firestore Security Rules for Chromatic Grid.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a strict user-ownership model, ensuring that users can only
+ * access their own data. Authorization Independence is achieved by denormalizing
+ * user IDs into the ColorPalette documents, avoiding costly and complex `get()` calls.
+ *
+ * Data Structure:
+ * - /users/{userId}: Stores user profile data. Each user document is only accessible
+ *   by the authenticated user with the matching ID.
+ * - /users/{userId}/colorPalettes/{colorPaletteId}: Stores color palettes created by the user.
+ *   Each color palette includes a `userId` field to indicate ownership.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Protects user profile data. Only the authenticated user can access their own profile.
+     * @path /users/{userId}
+     * @allow (create) - User with UID 'user_abc' can create their own document if request.auth.uid == 'user_abc'
+     * @allow (get, update, delete) - User with UID 'user_abc' can get, update, or delete their own document if request.auth.uid == 'user_abc'
+     * @deny (create) - User with UID 'user_xyz' cannot create a document with ID 'user_abc'.
+     * @deny (get, update, delete) - User with UID 'user_xyz' cannot get, update, or delete the document for 'user_abc'.
+     * @principle Enforces document ownership for writes, restricts access to a user's own data tree, and validates relational integrity between documents.
+     */
+    match /users/{userId} {
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+      
+      // Allow user to update their own document, but ONLY the 'printers' field.
+      // All other fields are immutable after creation.
+      allow update: if isOwner(userId)
+                    && request.resource.data.id == resource.data.id
+                    && request.resource.data.email == resource.data.email
+                    && request.resource.data.username == resource.data.username
+                    && request.resource.data.dateJoined == resource.data.dateJoined
+                    && request.resource.data.printers is list;
+
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow delete: if isExistingOwner(userId);
+
+      /**
+       * @description Protects job collections for a user. Only the owner can manage their jobs.
+       */
+      match /jobs/{jobId} {
+        allow read, write: if isOwner(userId);
+
+        /**
+         * @description Protects colors within a job. Only the job owner can manage colors.
+         */
+        match /colors/{colorId} {
+            allow read, write: if isOwner(userId);
+        }
+      }
+    }
+
+    /**
+     * @description Protects color palettes created by a user. Only the owner can create, read, update, and delete their own palettes.
+     * @path /users/{userId}/colorPalettes/{colorPaletteId}
+     * @allow (create) - User with UID 'user_abc' can create a color palette under their ID.
+     * @allow (get, list, update, delete) - User with UID 'user_abc' can get, list, update, and delete a color palette they own.
+     * @deny (create) - User with UID 'user_xyz' cannot create a color palette under 'user_abc'.
+     * @deny (get, list, update, delete) - User with UID 'user_xyz' cannot get, list, update, or delete a color palette owned by 'user_abc'.
+     * @principle Enforces document ownership for writes, restricts access to a user's own data tree, and validates relational integrity between documents.
+     */
+    match /users/{userId}/colorPalettes/{colorPaletteId} {
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+
+      allow create: if isOwner(userId) && request.resource.data.userId == userId;
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isExistingOwner(userId);
+    }
+  }
+}
