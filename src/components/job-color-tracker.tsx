@@ -35,9 +35,6 @@ import { ReferenceSheetDialog, type ReferenceSheetFormValues } from './reference
 import type { PantoneColor } from '@/lib/pantone';
 import { findClosestCMPTone } from '@/app/actions/color-actions';
 import { ManagePrintersDialog } from './manage-printers-dialog';
-import useLocalStorage from '@/hooks/use-local-storage';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { suggestColorUpdate } from '@/ai/flows/suggest-color-update-flow';
 
 
 const ColorEntry = ({
@@ -106,7 +103,7 @@ const ColorEntry = ({
 };
 
 export default function JobColorTracker() {
-  const { user, isPro } = useAuth();
+  const { user } = useAuth();
   const firestore = useFirestore();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [newJobName, setNewJobName] = useState('');
@@ -122,8 +119,6 @@ export default function JobColorTracker() {
   const { toast } = useToast();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isPrintersDialogOpen, setPrintersDialogOpen] = useState(false);
-  const [suggestions, setSuggestions] = useLocalStorage<ColorSuggestion[]>('color-matcher-suggestions', []);
-  const [isSuggestionLoading, setIsSuggestionLoading] = useState(false);
   const [jobSearchTerm, setJobSearchTerm] = useState("");
 
   // --- Data Fetching ---
@@ -132,7 +127,7 @@ export default function JobColorTracker() {
     return doc(firestore, 'users', user.uid);
   }, [user, firestore]);
 
-  const [userDoc, userDocLoading] = useDoc(userDocRef);
+  const [userDoc] = useDoc(userDocRef);
 
   const printers: string[] = useMemo(() => {
     return userDoc?.data()?.printers || [];
@@ -185,11 +180,6 @@ export default function JobColorTracker() {
     setSelectedColorIds(new Set());
   }, [selectedJobId]);
 
-  const currentJobSuggestions = useMemo(() => {
-    if (!selectedJobId) return [];
-    return suggestions.filter(s => s.jobId === selectedJobId);
-  }, [suggestions, selectedJobId]);
-  
    // --- Handlers ---
   const handleAddJob = async () => {
     if (!newJobName.trim() || !user || !firestore) return;
@@ -250,17 +240,7 @@ export default function JobColorTracker() {
     try {
       if (colorData.id) {
         const colorDocRef = doc(jobDocRef, 'colors', colorData.id);
-        
-        // Find the original color from the current state before updating
-        const originalColor = jobColors.find(c => c.id === colorData.id);
-        
         await updateDoc(colorDocRef, dataToSave);
-
-        // After successful update, trigger AI suggestion flow if color changed.
-        if (originalColor && JSON.stringify(originalColor.cmyk) !== JSON.stringify(dataToSave.cmyk)) {
-            handleAiSuggestions(originalColor, { ...originalColor, ...dataToSave, id: colorData.id });
-        }
-
       } else {
         const colorsCollectionRef = collection(jobDocRef, 'colors');
         await addDoc(colorsCollectionRef, dataToSave);
@@ -269,79 +249,6 @@ export default function JobColorTracker() {
       reportError(e as Error, { context: "Save Color" });
     }
   };
-
-  const handleAiSuggestions = async (colorBefore: JobColor, colorAfter: JobColor) => {
-    if (!isPro || !user || !firestore || !selectedJob) return;
-
-    setIsSuggestionLoading(true);
-    trackEvent('AI Suggestion Flow Started', { sourceJobId: selectedJob.id });
-
-    try {
-        // 1. Fetch all jobs and their colors
-        const allJobsData = await Promise.all(
-            jobs.map(async (job) => {
-                const colors: JobColor[] = [];
-                const colorsSnapshot = await getDocs(collection(firestore, `users/${user.uid}/jobs/${job.id}/colors`));
-                colorsSnapshot.forEach(colorDoc => {
-                    colors.push({ id: colorDoc.id, ...colorDoc.data() } as JobColor);
-                });
-                return { ...job, colors };
-            })
-        );
-        
-        // 2. Call the AI flow
-        const result = await suggestColorUpdate({
-            sourceJobId: selectedJob.id,
-            sourceJobName: selectedJob.name,
-            colorBefore,
-            colorAfter,
-            allJobs: allJobsData,
-        });
-
-        if (result.suggestions && result.suggestions.length > 0) {
-            // Add new suggestions, replacing any old ones for the same target colors.
-            setSuggestions(prev => {
-                const newSuggestions = [...result.suggestions];
-                const prevFiltered = prev.filter(p => 
-                    !newSuggestions.some(n => n.originalColor.id === p.originalColor.id)
-                );
-                return [...prevFiltered, ...newSuggestions];
-            });
-            trackEvent('AI Suggestions Generated', { count: result.suggestions.length });
-            toast({
-                title: "AI Suggestions Ready",
-                description: `Found ${result.suggestions.length} similar color(s) in other jobs to update.`
-            });
-        }
-    } catch (error) {
-        reportError(error as Error, { context: "AI Suggestion Flow" });
-        toast({ variant: "destructive", title: "AI Suggestion Failed", description: "Could not generate color suggestions." });
-    } finally {
-        setIsSuggestionLoading(false);
-    }
-  };
-
-  const handleApplySuggestion = async (suggestion: ColorSuggestion) => {
-      if (!user || !firestore) return;
-      trackEvent('AI Suggestion Applied', { jobId: suggestion.jobId, colorId: suggestion.originalColor.id });
-      try {
-          const colorRef = doc(firestore, 'users', user.uid, 'jobs', suggestion.jobId, 'colors', suggestion.originalColor.id);
-          await updateDoc(colorRef, { cmyk: suggestion.suggestedCmyk });
-          
-          // Remove the applied suggestion
-          setSuggestions(prev => prev.filter(s => s.originalColor.id !== suggestion.originalColor.id));
-          toast({ title: "Color Updated", description: `Color in job "${suggestion.jobName}" was updated based on AI suggestion.` });
-      } catch (error) {
-          reportError(error as Error, { context: "Apply AI Suggestion" });
-          toast({ variant: "destructive", title: "Update Failed", description: "Could not apply the suggested update." });
-      }
-  };
-
-  const handleDismissSuggestion = (suggestion: ColorSuggestion) => {
-      trackEvent('AI Suggestion Dismissed', { jobId: suggestion.jobId, colorId: suggestion.originalColor.id });
-      setSuggestions(prev => prev.filter(s => s.originalColor.id !== suggestion.originalColor.id));
-  };
-
 
   const handleDeleteColor = async () => {
     if (!selectedJobId || !colorToDeleteId || !user || !firestore) return;
@@ -369,10 +276,8 @@ export default function JobColorTracker() {
     try {
         const colorsForPdf: PdfPrintStripEntry[] = await Promise.all(jobColors.map(async (c) => {
           let pantoneMatch: PantoneColor | null = null;
-          if(isPro) {
-            const rgb = cmykToRgb(c.cmyk.c, c.cmyk.m, c.cmyk.y, c.cmyk.k);
-            pantoneMatch = await findClosestCMPTone(rgb);
-          }
+          const rgb = cmykToRgb(c.cmyk.c, c.cmyk.m, c.cmyk.y, c.cmyk.k);
+          pantoneMatch = await findClosestCMPTone(rgb);
           return { cmyk: c.cmyk, cmptone: pantoneMatch };
         }));
 
@@ -503,10 +408,8 @@ export default function JobColorTracker() {
         
         const colorsForPdf: PdfPrintStripEntry[] = await Promise.all(selectedColors.map(async (color) => {
             let pantoneMatch: PantoneColor | null = null;
-            if (isPro) {
-                const rgb = cmykToRgb(color.cmyk.c, color.cmyk.m, color.cmyk.y, color.cmyk.k);
-                pantoneMatch = await findClosestCMPTone(rgb);
-            }
+            const rgb = cmykToRgb(color.cmyk.c, color.cmyk.m, color.cmyk.y, color.cmyk.k);
+            pantoneMatch = await findClosestCMPTone(rgb);
             return { cmyk: color.cmyk, cmptone: pantoneMatch };
         }));
 
@@ -570,18 +473,6 @@ export default function JobColorTracker() {
                             onClick={() => setSelectedJobId(job.id)}
                             >
                             <span className="truncate">{job.name}</span>
-                            {suggestions.some(s => s.jobId === job.id) && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div className="ml-2 w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>This job has pending AI suggestions.</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
                             </Button>
                             <Button variant="ghost" size="icon" className="w-8 h-8 opacity-0 group-hover:opacity-100 shrink-0" onClick={() => handleDeleteJob(job.id)} aria-label={`Delete job: ${job.name}`}>
                                 <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
@@ -635,31 +526,6 @@ export default function JobColorTracker() {
                 </div>
               </CardHeader>
               <CardContent className="flex-grow min-h-0 flex flex-col p-0">
-                {isSuggestionLoading && (
-                     <div className="p-3 bg-primary/5 text-primary border-b flex items-center gap-3 flex-shrink-0 animate-pulse">
-                        <Loader2 className='h-4 w-4 animate-spin' />
-                        <p className='text-xs font-medium'>Analyzing similar colors for suggestions...</p>
-                    </div>
-                )}
-                {currentJobSuggestions.map(suggestion => (
-                    <div key={suggestion.originalColor.id} className="p-3 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-b border-amber-500/20 flex items-start gap-3 flex-shrink-0">
-                        <AlertTriangle className='h-4 w-4 mt-0.5 flex-shrink-0' />
-                        <div className='text-xs flex-grow'>
-                            <p className='font-bold mb-1 uppercase tracking-wider'>AI Suggestion</p>
-                            <p>Proportional update suggested based on change in <strong>{suggestion.sourceJobName}</strong>:</p>
-                            <p className="mt-1 font-mono bg-white/50 dark:bg-black/20 p-1 rounded inline-block">
-                                C{suggestion.originalColor.cmyk.c} M{suggestion.originalColor.cmyk.m} Y{suggestion.originalColor.cmyk.y} K{suggestion.originalColor.cmyk.k} 
-                                <span className="mx-2">→</span>
-                                C{suggestion.suggestedCmyk.c} M{suggestion.suggestedCmyk.m} Y{suggestion.suggestedCmyk.y} K{suggestion.suggestedCmyk.k}
-                            </p>
-                            <div className="mt-2 space-x-3 flex items-center">
-                                <Button variant="default" size="sm" className="h-7 px-3 text-[10px]" onClick={() => handleApplySuggestion(suggestion)}>Apply Change</Button>
-                                <Button variant="ghost" size="sm" className="h-7 px-3 text-[10px] text-muted-foreground" onClick={() => handleDismissSuggestion(suggestion)}>Dismiss</Button>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-                
                 <div className="flex-grow min-h-0 flex flex-col">
                   {jobColorsLoading ? (
                       <div className="flex-grow flex items-center justify-center">

@@ -7,3 +7,5 @@ runConfig:
   # This is a key control for managing hosting costs.
   # For an alpha release, 1 is a safe and cost-effective setting.
   maxInstances: 1
+
+

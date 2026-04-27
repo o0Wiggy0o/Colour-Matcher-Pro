@@ -22,8 +22,7 @@ import { exportToJson, exportToCsv, exportToTxt, triggerDownload, base64ToBlob }
 import { ColorHistory, type ColorHistoryEntry } from "@/components/color-history";
 import { useToast } from "@/hooks/use-toast";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { generateSimilarColors } from "@/ai/flows/generate-similar-colors-flow";
-import type { GenerateSimilarColorsInput } from "@/lib/types";
+
 import { CMPToneCombobox } from "@/components/pantone-combobox";
 import { ProFeatureLock } from "./pro-feature-lock";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -178,7 +177,7 @@ export function GridGenerator({ isPro, gridData, setGridData, colorHistory, setC
 }) {
   const [history, setHistory] = useLocalStorage<ColorHistoryEntry[]>('color-matcher-pro-history', []);
   const [selectedPantone, setSelectedPantone] = useState<PantoneColor | null>(null);
-  const [generationMode, setGenerationMode] = useState<'manual' | 'ai'>('manual');
+  const [generationMode, setGenerationMode] = useState<'manual'>('manual');
   const [isGenerating, setIsGenerating] = useState(false);
   const [hoveredColor, setHoveredColor] = useState<CmykColor | null>(null);
   const [isPdfOptionsOpen, setPdfOptionsOpen] = useState(false);
@@ -213,7 +212,6 @@ export function GridGenerator({ isPro, gridData, setGridData, colorHistory, setC
 
   useEffect(() => {
     if (!isPro) {
-      setGenerationMode('manual');
       setIsSoftProof(false);
     }
   }, [isPro]);
@@ -246,40 +244,14 @@ export function GridGenerator({ isPro, gridData, setGridData, colorHistory, setC
   }, [hoveredColor, isPro]);
 
   const onGenerateGrid = useCallback(async (values: GridFormValues) => {
-      if (generationMode === 'manual') {
-          const { c, m, y, k, gridSize, step, xAxis, yAxis } = values;
-          const baseColor = { c, m, y, k };
-          const data = generateGridData(baseColor, gridSize, step, xAxis, yAxis);
-          setGridData(data);
-          trackEvent('Grid Generated', { mode: 'manual', gridSize, step });
-          toast({title: "Grid Generated", description: "The color grid has been updated."});
-      } else {
-          setIsGenerating(true);
-          trackEvent('Grid Generation Started', { mode: 'ai', gridSize: values.gridSize });
-          try {
-              const { c, m, y, k, gridSize, step } = values;
-              const input: GenerateSimilarColorsInput = {
-                  baseColor: { c, m, y, k },
-                  gridSize,
-                  variationLevel: Math.max(1, Math.min(10, Math.round(step / 5))),
-              };
-              const result = await generateSimilarColors(input);
-              if (result.grid) {
-                  setGridData(result.grid);
-                  trackEvent('Grid Generated', { mode: 'ai', gridSize: input.gridSize, variation: input.variationLevel });
-                  toast({title: "AI Grid Generated", description: "The AI has created a new color grid."});
-              } else {
-                  throw new Error("AI did not return a valid grid.");
-              }
-          } catch (error) {
-              reportError(error as Error, { context: 'AI Grid Generation', generationMode });
-              console.error("AI generation failed", error);
-              toast({variant: "destructive", title: "AI Generation Failed", description: `Could not generate grid. Please try again. Error: ${error instanceof Error ? error.message : String(error)}`});
-          } finally {
-              setIsGenerating(false);
-          }
-      }
-  }, [toast, generationMode, setGridData]);
+    trackEvent('Grid Generation Started', { mode: 'manual', gridSize: values.gridSize });
+    const { c, m, y, k, gridSize, step, xAxis, yAxis } = values;
+    const baseColor = { c, m, y, k };
+    const data = generateGridData(baseColor, gridSize, step, xAxis, yAxis);
+    setGridData(data);
+    trackEvent('Grid Generated', { mode: 'manual', gridSize, step });
+    toast({ title: "Grid Generated", description: "The color grid has been updated." });
+  }, [toast, setGridData]);
   
   const handleGridClick = useCallback(async (coords: { rowIndex: number, colIndex: number }) => {
     if (!gridData) return;
@@ -857,7 +829,7 @@ export function GridGenerator({ isPro, gridData, setGridData, colorHistory, setC
             <div>
                 <h4 className="font-bold mb-1">2. Configure and Generate</h4>
                 <p className="text-muted-foreground">
-                Choose a grid size and step/variation level. In <strong>Manual Mode</strong>, select which two CMYK values vary on the X and Y axes. In <strong>AI Variations Mode</strong> (Pro), just set the variation level and let the AI do the work. Click 'Generate Grid' to see the results.
+                Choose a grid size and step/variation level. Select which two CMYK values vary on the X and Y axes. Click 'Generate Grid' to see the results.
                 </p>
             </div>
             <div>

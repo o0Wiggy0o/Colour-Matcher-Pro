@@ -30,61 +30,13 @@ export interface ColorSuggestion {
   sourceColorAfter: JobColor;
 }
 
-// AI Flow Types
-
-// generate-similar-colors-flow
-export interface GenerateSimilarColorsInput {
-  baseColor: CmykColor;
-  gridSize: number;
-  variationLevel: number;
-}
-export interface GenerateSimilarColorsOutput {
-  grid: CmykColor[][];
+export interface PantoneColor {
+  name: string;
+  cmyk: CmykColor;
 }
 
-// extract-colors-from-image-flow
-export interface ExtractColorsFromImageInput {
-    photoDataUri: string;
-    paletteSize?: number;
-}
-export interface ExtractColorsFromImageOutput {
-    palette: CmykColor[];
-}
-
-// extract-gradients-flow
-export interface Gradient {
-    stops: CmykColor[];
-    description: string;
-}
-export interface ExtractGradientsInput {
-    photoDataUri: string;
-}
-export interface ExtractGradientsOutput {
-    gradients: Gradient[];
-}
-
-// extract-svg-colors-flow
-export interface ExtractSvgColorsInput {
-    svgContent: string;
-}
-export interface ExtractSvgColorsOutput {
-    palette: CmykColor[];
-}
-
-// suggest-color-update-flow
-export interface SuggestColorUpdateInput {
-    sourceJobId: string;
-    sourceJobName: string;
-    colorBefore: JobColor;
-    colorAfter: JobColor;
-    allJobs: (Job & { colors: JobColor[] })[];
-}
-export interface Suggestion {
-    jobId: string;
-    jobName: string;
-    originalColor: JobColor;
-    suggestedCmyk: CmykColor;
-}
-export interface SuggestColorUpdateOutput {
-    suggestions: Suggestion[];
+export interface ColorHistoryItem {
+  id: string;
+  cmyk: CmykColor;
+  timestamp: number;
 }
