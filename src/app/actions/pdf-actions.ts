@@ -1,4 +1,3 @@
-
 'use server';
 
 import type { PantoneColor } from '@/lib/pantone';
@@ -483,6 +482,7 @@ export async function generateCmykStripPdf(options: CmykStripOptions): Promise<s
 export async function generateMultiGridPdf(baseColors: CmykColor[], gridConfig: MultiGridFormValues): Promise<string> {
     const { PDFDocument, StandardFonts, cmyk, rgb } = await import('pdf-lib');
     const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     
     const pageWidth = A4_HEIGHT_PT;
     const pageHeight = A4_WIDTH_PT;
@@ -503,6 +503,30 @@ export async function generateMultiGridPdf(baseColors: CmykColor[], gridConfig: 
                 page.drawRectangle({
                     x, y, width: cellWidth, height: cellHeight,
                     color: cmyk(color.c/100, color.m/100, color.y/100, color.k/100),
+                });
+                // Draw CMYK label inside the cell
+                const isDark = color.k > 50 || (color.c > 50 && color.m > 50);
+                const textColor = isDark ? rgb(1, 1, 1) : rgb(0, 0, 0);
+                const labelSize = Math.max(5, Math.min(8, Math.min(cellWidth, cellHeight) * 0.08));
+                const line1 = `C${color.c} M${color.m}`;
+                const line2 = `Y${color.y} K${color.k}`;
+                const line1Width = font.widthOfTextAtSize(line1, labelSize);
+                const line2Width = font.widthOfTextAtSize(line2, labelSize);
+                // Center the first line vertically a bit above the center
+                page.drawText(line1, {
+                    x: x + (cellWidth - line1Width) / 2,
+                    y: y + cellHeight / 2 + labelSize / 2,
+                    font,
+                    size: labelSize,
+                    color: textColor,
+                });
+                // Second line slightly below the center
+                page.drawText(line2, {
+                    x: x + (cellWidth - line2Width) / 2,
+                    y: y + cellHeight / 2 - labelSize * 1.5,
+                    font,
+                    size: labelSize,
+                    color: textColor,
                 });
             });
         });
