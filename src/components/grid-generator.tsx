@@ -84,12 +84,11 @@ const ColorPreview = ({ control, hoveredColor, hoveredPantone, isFindingHoveredP
     isPro: boolean,
     isSoftProof: boolean,
 }) => {
-    const cmyk = useWatch({
-        control,
-        name: ["c", "m", "y", "k"],
-        defaultValue: [defaultFormValues.c, defaultFormValues.m, defaultFormValues.y, defaultFormValues.k]
-    });
-    const baseColor = { c: cmyk[0], m: cmyk[1], y: cmyk[2], k: cmyk[3] };
+    const c = useWatch({ control, name: "c", defaultValue: defaultFormValues.c });
+    const m = useWatch({ control, name: "m", defaultValue: defaultFormValues.m });
+    const y = useWatch({ control, name: "y", defaultValue: defaultFormValues.y });
+    const k = useWatch({ control, name: "k", defaultValue: defaultFormValues.k });
+    const baseColor = { c, m, y, k };
 
     const sourceColor = hoveredColor || baseColor;
     const pantoneToShow = hoveredColor ? hoveredPantone : null;
@@ -173,7 +172,7 @@ export function GridGenerator({ isPro, gridData, setGridData, colorHistory, setC
   gridData: GridData | null,
   setGridData: React.Dispatch<React.SetStateAction<GridData | null>>,
   colorHistory: ColorHistoryEntry[],
-  setColorHistory: (history: ColorHistoryEntry[]) => void,
+  setColorHistory: React.Dispatch<React.SetStateAction<ColorHistoryEntry[]>>,
 }) {
   const [history, setHistory] = useLocalStorage<ColorHistoryEntry[]>('color-matcher-pro-history', []);
   const [selectedPantone, setSelectedPantone] = useState<PantoneColor | null>(null);
@@ -283,16 +282,6 @@ export function GridGenerator({ isPro, gridData, setGridData, colorHistory, setC
       case "txt": exportToTxt(history); break;
     }
   }, [history]);
-
-  const handlePrint = () => {
-    const params = new URLSearchParams();
-    const formValues = form.getValues();
-    Object.entries(formValues).forEach(([key, value]) => {
-      params.append(key, String(value));
-    });
-    trackEvent('Print Preview Opened');
-    window.open(`/print?${params.toString()}`, '_blank');
-  };
 
   const handleGeneratePdfWithOptions = async (pdfOptions: PdfOptionsFormValues) => {
     if (!gridData) return;
@@ -468,7 +457,7 @@ export function GridGenerator({ isPro, gridData, setGridData, colorHistory, setC
     form.setValue('m', entry.cmyk.m, { shouldValidate: true, shouldDirty: true });
     form.setValue('y', entry.cmyk.y, { shouldValidate: true, shouldDirty: true });
     form.setValue('k', entry.cmyk.k, { shouldValidate: true, shouldDirty: true });
-    form.setValue('gridSize', '9', { shouldValidate: true, shouldDirty: true });
+    form.setValue('gridSize', 9, { shouldValidate: true, shouldDirty: true });
     form.setValue('step', 1, { shouldValidate: true, shouldDirty: true });
     
     const newValues = {
@@ -477,7 +466,7 @@ export function GridGenerator({ isPro, gridData, setGridData, colorHistory, setC
         m: entry.cmyk.m,
         y: entry.cmyk.y,
         k: entry.cmyk.k,
-        gridSize: '9',
+        gridSize: 9,
         step: 1
     } as GridFormValues;
     
@@ -757,9 +746,6 @@ export function GridGenerator({ isPro, gridData, setGridData, colorHistory, setC
                              </div>
                         </CardContent>
                         <CardFooter className="flex-shrink-0 pt-6 border-t flex gap-4 justify-end">
-                            <Button variant="outline" className="flex-1 sm:flex-initial" onClick={handlePrint}>
-                                <Printer className="mr-2"/> Quick Print
-                            </Button>
                             <div id="tour-step-7-download-pdf">
                                 {isPro ? (
                                     <Button className="flex-1 sm:flex-initial" onClick={() => setPdfOptionsOpen(true)}>
